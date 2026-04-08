@@ -359,26 +359,48 @@ function owed(name){ return getExp(name).reduce((s,t)=>s+t.amount,0)-getPay(name
 
 function renderPublic(){
   if(!friendSlug) return;
-  const f=friends.find(x=>x.slug===friendSlug);
-  const el=document.getElementById('friend-public-screen');
-  if(!f){ el.innerHTML='<div style="text-align:center;padding:4rem;color:#888;font-size:14px">This link is not valid. Ask Somesh for your link.</div>'; return; }
-  const c=ac(f.name);
-  const av=document.getElementById('pub-avatar');
-  av.style.background=c.bg; av.style.color=c.fg; av.textContent=f.name[0];
-  document.getElementById('pub-name').textContent=f.name;
-  const spent=getExp(f.name).reduce((s,t)=>s+t.amount,0);
-  const paid =getPay(f.name).reduce((s,t)=>s+t.amount,0);
-  document.getElementById('pub-total').textContent=fmt(spent);
-  document.getElementById('pub-paid').textContent=fmt(paid);
-  document.getElementById('pub-due').textContent=fmt(Math.max(0,spent-paid));
-  const exps=getExp(f.name);
-  document.getElementById('pub-expenses').innerHTML=exps.length
-    ?exps.map(t=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5"><div><div style="font-size:13px;font-weight:500">${t.category} — ${t.notes||''}</div><div style="font-size:11px;color:#888;margin-top:2px">${t.date} · <span class="badge badge-card">${t.card}</span></div></div><div style="font-weight:600;white-space:nowrap;margin-left:8px">${fmt(t.amount)}</div></div>`).join('')
-    :'<div class="empty">No expenses yet</div>';
-  const pays=getPay(f.name);
-  document.getElementById('pub-payments').innerHTML=pays.length
-    ?pays.map(t=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5"><div><div style="font-size:13px;font-weight:500">${t.notes||'Payment'}</div><div style="font-size:11px;color:#888;margin-top:2px">${t.date} · ${t.mode}</div></div><div style="font-weight:600;color:#16a34a;white-space:nowrap;margin-left:8px">${fmt(t.amount)}</div></div>`).join('')
-    :'<div class="empty">No payments recorded yet</div>';
+  const el = document.getElementById('friend-public-screen');
+
+  // If friends have not loaded yet, show a loading message instead of error
+  if(!friends || friends.length === 0){
+    el.style.display = 'block';
+    el.innerHTML = '<div style="text-align:center;padding:4rem;color:#888;font-size:14px">Loading your balance...</div>';
+    return;
+  }
+
+  const f = friends.find(x => x.slug === friendSlug);
+
+  if(!f){
+    el.style.display = 'block';
+    el.innerHTML = '<div style="text-align:center;padding:4rem;color:#888;font-size:14px">This link is not valid. Ask Somesh for your link.</div>';
+    return;
+  }
+
+  // Friend found – show the normal public layout
+  document.getElementById('friend-public-screen').style.display = 'block';
+
+  const c = ac(f.name);
+  const av = document.getElementById('pub-avatar');
+  av.style.background = c.bg;
+  av.style.color = c.fg;
+  av.textContent = f.name[0];
+  document.getElementById('pub-name').textContent = f.name;
+
+  const spent = getExp(f.name).reduce((s,t)=>s+t.amount,0);
+  const paid  = getPay(f.name).reduce((s,t)=>s+t.amount,0);
+  document.getElementById('pub-total').textContent = fmt(spent);
+  document.getElementById('pub-paid').textContent  = fmt(paid);
+  document.getElementById('pub-due').textContent   = fmt(Math.max(0,spent-paid));
+
+  const exps = getExp(f.name);
+  document.getElementById('pub-expenses').innerHTML = exps.length
+    ? exps.map(t=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5"><div><div style="font-size:13px;font-weight:500">${t.category} — ${t.notes||''}</div><div style="font-size:11px;color:#888;margin-top:2px">${t.date} · <span class="badge badge-card">${t.card}</span></div></div><div style="font-weight:600;white-space:nowrap;margin-left:8px">${fmt(t.amount)}</div></div>`).join('')
+    : '<div class="empty">No expenses yet</div>';
+
+  const pays = getPay(f.name);
+  document.getElementById('pub-payments').innerHTML = pays.length
+    ? pays.map(t=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f5f5f5"><div><div style="font-size:13px;font-weight:500">${t.notes||'Payment'}</div><div style="font-size:11px;color:#888;margin-top:2px">${t.date} · ${t.mode}</div></div><div style="font-weight:600;color:#16a34a;white-space:nowrap;margin-left:8px">${fmt(t.amount)}</div></div>`).join('')
+    : '<div class="empty">No payments recorded yet</div>';
 }
 
 function renderAll(){ renderMetrics(); renderTable(); renderCardSummary(); renderFriendList(); renderManage(); }
