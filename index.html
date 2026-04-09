@@ -268,7 +268,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getDatabase, ref, push, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, push, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDNT_hoAb_UDQH_XuwzwJh7Wy16JzpHZvE",
@@ -294,24 +294,31 @@ const fmt = n => '₹'+Number(n).toLocaleString('en-IN');
 const toast = msg => { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); };
 
 let transactions=[], friends=[], settings={pin:'1234'}, selectedFriend=null;
+let friendsLoaded=false, txLoaded=false;
 
 const path = window.location.pathname.toLowerCase();
 const friendSlug = path.startsWith('/friend/') ? path.split('/friend/')[1].split('/')[0] : null;
+
+function tryRenderPublic(){
+  if(friendsLoaded && txLoaded) renderPublic();
+}
 
 onValue(ref(db,'transactions'), snap => {
   transactions=[];
   if(snap.exists()) snap.forEach(c=>transactions.push({id:c.key,...c.val()}));
   transactions.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  txLoaded=true;
   if(document.getElementById('main-app').style.display!=='none') renderAll();
-  if(friendSlug) renderPublic();
+  if(friendSlug) tryRenderPublic();
 });
 
 onValue(ref(db,'friends'), snap => {
   friends=[];
   if(snap.exists()) snap.forEach(c=>friends.push({id:c.key,...c.val()}));
+  friendsLoaded=true;
   populateFriendDropdowns();
   if(document.getElementById('main-app').style.display!=='none'){ renderFriendList(); renderManage(); }
-  if(friendSlug) renderPublic();
+  if(friendSlug) tryRenderPublic();
 });
 
 onValue(ref(db,'settings'), snap => {
@@ -361,6 +368,7 @@ function renderPublic(){
   if(!friendSlug) return;
   const f=friends.find(x=>x.slug===friendSlug);
   const el=document.getElementById('friend-public-screen');
+  if(!friendsLoaded){ el.innerHTML='<div style="text-align:center;padding:4rem;color:#888;font-size:14px">Loading...</div>'; return; }
   if(!f){ el.innerHTML='<div style="text-align:center;padding:4rem;color:#888;font-size:14px">This link is not valid. Ask Somesh for your link.</div>'; return; }
   const c=ac(f.name);
   const av=document.getElementById('pub-avatar');
