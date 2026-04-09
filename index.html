@@ -308,7 +308,7 @@ onValue(ref(db,'transactions'), snap => {
   if(snap.exists()) snap.forEach(c=>transactions.push({id:c.key,...c.val()}));
   transactions.sort((a,b)=>new Date(b.date)-new Date(a.date));
   txLoaded=true;
-  if(document.getElementById('main-app').style.display!=='none') renderAll();
+  tryRenderAll();
   if(friendSlug) tryRenderPublic();
 });
 
@@ -317,7 +317,9 @@ onValue(ref(db,'friends'), snap => {
   if(snap.exists()) snap.forEach(c=>friends.push({id:c.key,...c.val()}));
   friendsLoaded=true;
   populateFriendDropdowns();
-  if(document.getElementById('main-app').style.display!=='none'){ renderFriendList(); renderManage(); }
+  renderFriendList();
+  renderManage();
+  tryRenderAll();
   if(friendSlug) tryRenderPublic();
 });
 
@@ -350,6 +352,13 @@ function showApp(){
   document.getElementById('main-app').style.display='block';
   document.getElementById('exp-date').value=new Date().toISOString().split('T')[0];
   renderAll();
+}
+
+// Re-render everything once both friends and transactions are loaded
+function tryRenderAll(){
+  if(friendsLoaded && txLoaded && document.getElementById('main-app').style.display!=='none'){
+    renderAll();
+  }
 }
 
 window.logout = function(){
@@ -560,8 +569,13 @@ window.switchView = function(v){
   document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   document.getElementById('tab-'+v).classList.add('active');
-  if(v==='friends') renderFriendList();
-  if(v==='manage')  renderManage();
+  // Always re-render from current friends array when switching tabs
+  if(v==='friends'){
+    document.getElementById('friend-list-view').style.display='block';
+    document.getElementById('friend-detail-view').style.display='none';
+    renderFriendList();
+  }
+  if(v==='manage') renderManage();
 };
 
 window.copyLink = function(){
