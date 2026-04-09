@@ -351,13 +351,20 @@ window.checkPin = function(){
 function showApp(){
   document.getElementById('main-app').style.display='block';
   document.getElementById('exp-date').value=new Date().toISOString().split('T')[0];
-  renderAll();
+  // Don't call renderAll here — Firebase listeners will fire and render once data arrives
+  // But if data already loaded (e.g. session resume), render immediately
+  if(friendsLoaded && txLoaded) renderAll();
 }
 
 // Re-render everything once both friends and transactions are loaded
 function tryRenderAll(){
   if(friendsLoaded && txLoaded && document.getElementById('main-app').style.display!=='none'){
-    renderAll();
+    renderMetrics();
+    renderTable();
+    renderCardSummary();
+    renderFriendList();  // always update friend cards
+    renderManage();      // always update manage tab
+    populateFriendDropdowns();
   }
 }
 
@@ -569,13 +576,13 @@ window.switchView = function(v){
   document.querySelectorAll('.tab').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
   document.getElementById('tab-'+v).classList.add('active');
-  // Always re-render from current friends array when switching tabs
   if(v==='friends'){
     document.getElementById('friend-list-view').style.display='block';
     document.getElementById('friend-detail-view').style.display='none';
-    renderFriendList();
+    renderFriendList(); // always re-render full list from current friends array
   }
   if(v==='manage') renderManage();
+  if(v==='admin') { renderMetrics(); renderTable(); renderCardSummary(); }
 };
 
 window.copyLink = function(){
