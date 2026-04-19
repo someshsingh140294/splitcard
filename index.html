@@ -147,19 +147,24 @@
         <div class="card-title">Log an expense</div>
         <div class="form-row three">
           <div><label>Date</label><input type="date" id="exp-date"/></div>
-          <div><label>Amount (Rs)</label><input type="number" id="exp-amount" placeholder="0"/></div>
+          <div><label>Time</label><input type="time" id="exp-time"/></div>
           <div><label>Card used</label>
             <select id="exp-card"><option>HSBC</option><option>ICICI</option><option>Axis</option><option>SBI</option><option>HDFC</option><option>Amex</option><option>Kotak</option></select>
           </div>
         </div>
         <div class="form-row">
-          <div><label>Friend</label><select id="exp-friend"></select></div>
           <div><label>Category</label>
             <select id="exp-category"><option>Flight</option><option>Hotel</option><option>Food</option><option>Activity</option><option>Visa</option><option>Transport</option><option>Other</option></select>
           </div>
+          <div><label>Total amount (Rs)</label><input type="number" id="exp-total" placeholder="0" oninput="recalcSplits()"/></div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label>Split across friends</label>
+          <div id="split-friends-list" style="margin-top:8px;border:1px solid #e0e0e0;border-radius:8px;overflow:hidden"></div>
+          <button type="button" class="btn sm" style="margin-top:8px" onclick="equalSplit()">Equal split</button>
         </div>
         <div style="margin-bottom:12px"><label>Notes</label><textarea id="exp-notes" placeholder="e.g. Bangkok hotel, 3 nights"></textarea></div>
-        <button class="btn primary" onclick="addExpense()">Add expense</button>
+        <button class="btn primary" onclick="addExpense()">Add expenses</button>
       </div>
       <div class="card">
         <div class="section-header">
@@ -334,7 +339,11 @@ onValue(ref(db, 'transactions'), function(snap) {
       transactions.push(Object.assign({ id: c.key }, c.val()));
     });
   }
-  transactions.sort(function(a,b) { return new Date(b.date) - new Date(a.date); });
+  transactions.sort(function(a,b) {
+    var da = new Date((a.date||'1970-01-01') + 'T' + (a.time||'00:00'));
+    var db2 = new Date((b.date||'1970-01-01') + 'T' + (b.time||'00:00'));
+    return da - db2;
+  });
   txLoaded = true;
   console.log('TX loaded:', transactions.length);
   if (friendSlug) { tryRenderPublic(); }
@@ -412,6 +421,7 @@ window.checkPin = function() {
 function showApp() {
   document.getElementById('main-app').style.display = 'block';
   document.getElementById('exp-date').value = new Date().toISOString().split('T')[0];
+  var now = new Date(); document.getElementById('exp-time').value = now.toTimeString().slice(0,5);
   if (friendsLoaded && txLoaded) {
     renderMetrics();
     renderTable();
@@ -489,7 +499,8 @@ function renderTable() {
     var o = owed(t.friend);
     var sb = t.type === 'payment' ? '<span class="badge badge-payment">Payment</span>' : o <= 0 ? '<span class="badge badge-settled">Settled</span>' : '<span class="badge badge-pending">Pending</span>';
     var mb = t.type === 'expense' ? '<span class="badge badge-card">' + t.card + '</span>' : '<span style="font-size:11px;color:#888">' + t.mode + '</span>';
-    return '<tr><td>' + t.date + '</td><td>' + t.friend + '</td><td style="font-weight:600">' + fmt(t.amount) + '</td><td>' + mb + '</td><td style="font-size:11px;color:#666">' + (t.type==='expense'?t.category:'-') + '</td><td>' + sb + '</td><td style="font-size:12px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (t.notes||'') + '</td></tr>';
+    var timeStr = t.time ? ' ' + t.time : '';
+    return '<tr><td style="font-size:11px">' + t.date + timeStr + '</td><td>' + t.friend + '</td><td style="font-weight:600">' + fmt(t.amount) + '</td><td>' + mb + '</td><td style="font-size:11px;color:#666">' + (t.type==='expense'?t.category:'-') + '</td><td>' + sb + '</td><td style="font-size:12px;color:#777;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (t.notes||'') + '</td></tr>';
   }).join('');
 }
 
@@ -548,28 +559,41 @@ function renderManage() {
 }
 
 function populateFriendDropdowns() {
-  var ef = document.getElementById('exp-friend');
   var ff = document.getElementById('filter-friend');
-  if (!ef || !ff) { return; }
-  var prev = ef.value;
-  ef.innerHTML = friends.map(function(f) { return '<option value="' + f.name + '">' + f.name + '</option>'; }).join('');
-  if (prev) { ef.value = prev; }
-  ff.innerHTML = '<option value="">All friends</option>' + friends.map(function(f) { return '<option value="' + f.name + '">' + f.name + '</option>'; }).join('');
+  if (ff) {
+    ff.innerHTML = '<option value="">All friends</option>' + friends.map(function(f) { return '<option value="' + f.name + '">' + f.name + '</option>'; }).join('');
+  }
+  renderSplitFriendsList();
 }
 
 window.addExpense = async function() {
   var date = document.getElementById('exp-date').value;
-  var amount = parseFloat(document.getElementById('exp-amount').value);
+  var time = document.getElementById('exp-time').value || '00:00';
   var card = document.getElementById('exp-card').value;
-  var friend = document.getElementById('exp-friend').value;
   var category = document.getElementById('exp-category').value;
   var notes = document.getElementById('exp-notes').value;
-  if (!date || !amount || amount <= 0) { showToast('Please fill date and amount'); return; }
-  if (!friend) { showToast('Add a friend first'); return; }
-  await push(ref(db, 'transactions'), { type:'expense', date:date, friend:friend, amount:amount, card:card, category:category, notes:notes||'', createdAt:Date.now() });
-  document.getElementById('exp-amount').value = '';
+  if (!date) { showToast('Please select a date'); return; }
+  // Collect splits
+  var splits = [];
+  var inputs = document.querySelectorAll('.split-amount-input');
+  var checks = document.querySelectorAll('.split-friend-check');
+  for (var i = 0; i < checks.length; i++) {
+    if (checks[i].checked) {
+      var amt = parseFloat(inputs[i].value);
+      if (!amt || amt <= 0) { showToast('Enter amount for ' + checks[i].dataset.name); return; }
+      splits.push({ friend: checks[i].dataset.name, amount: amt });
+    }
+  }
+  if (!splits.length) { showToast('Select at least one friend'); return; }
+  for (var j = 0; j < splits.length; j++) {
+    await push(ref(db, 'transactions'), { type:'expense', date:date, time:time, friend:splits[j].friend, amount:splits[j].amount, card:card, category:category, notes:notes||'', createdAt:Date.now() });
+  }
+  document.getElementById('exp-total').value = '';
   document.getElementById('exp-notes').value = '';
-  showToast('Expense saved!');
+  // Uncheck all
+  document.querySelectorAll('.split-friend-check').forEach(function(c) { c.checked = false; });
+  document.querySelectorAll('.split-amount-input').forEach(function(i) { i.value = ''; });
+  showToast(splits.length + ' expense(s) saved!');
 };
 
 window.addPayment = async function() {
@@ -577,8 +601,9 @@ window.addPayment = async function() {
   var amount = parseFloat(document.getElementById('pay-amount').value);
   var mode = document.getElementById('pay-mode').value;
   var notes = document.getElementById('pay-notes').value;
+  var time = new Date().toTimeString().slice(0,5);
   if (!date || !amount || amount <= 0) { showToast('Please fill date and amount'); return; }
-  await push(ref(db, 'transactions'), { type:'payment', date:date, friend:selectedFriend, amount:amount, mode:mode, notes:notes||'', createdAt:Date.now() });
+  await push(ref(db, 'transactions'), { type:'payment', date:date, time:time, friend:selectedFriend, amount:amount, mode:mode, notes:notes||'', createdAt:Date.now() });
   document.getElementById('pay-amount').value = '';
   document.getElementById('pay-notes').value = '';
   showToast('Payment recorded!');
@@ -692,6 +717,42 @@ window.exportCSV = function() {
   a.download = 'splitcard_' + new Date().toISOString().split('T')[0] + '.csv';
   a.click();
   showToast('CSV downloaded!');
+};
+
+function renderSplitFriendsList() {
+  var el = document.getElementById('split-friends-list');
+  if (!el) { return; }
+  if (!friends.length) {
+    el.innerHTML = '<div style="padding:12px;color:#aaa;font-size:13px">Add friends in Manage tab first</div>';
+    return;
+  }
+  el.innerHTML = friends.map(function(f, i) {
+    var c = ac(f.name);
+    return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #f5f5f5">' +
+      '<input type="checkbox" class="split-friend-check" data-name="' + f.name + '" data-index="' + i + '" onchange="recalcSplits()" style="width:16px;height:16px;cursor:pointer"/>' +
+      '<div class="avatar" style="background:' + c.bg + ';color:' + c.fg + ';margin-bottom:0;width:28px;height:28px;font-size:12px">' + f.name[0] + '</div>' +
+      '<span style="font-size:13px;flex:1">' + f.name + '</span>' +
+      '<input type="number" class="split-amount-input" placeholder="0" style="width:90px;font-size:13px;padding:6px 8px;border:1px solid #e0e0e0;border-radius:6px;background:#fafafa"/>' +
+    '</div>';
+  }).join('');
+}
+
+window.recalcSplits = function() {
+  var total = parseFloat(document.getElementById('exp-total').value) || 0;
+  var checks = document.querySelectorAll('.split-friend-check:checked');
+  if (!checks.length || !total) { return; }
+  var each = Math.round((total / checks.length) * 100) / 100;
+  var allInputs = document.querySelectorAll('.split-amount-input');
+  var allChecks = document.querySelectorAll('.split-friend-check');
+  for (var i = 0; i < allChecks.length; i++) {
+    if (allChecks[i].checked) { allInputs[i].value = each; }
+  }
+};
+
+window.equalSplit = function() {
+  var checks = document.querySelectorAll('.split-friend-check');
+  checks.forEach(function(c) { c.checked = true; });
+  recalcSplits();
 };
 
 boot();
